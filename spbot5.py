@@ -31,8 +31,8 @@ from queue import Queue, Empty
 load_dotenv()
 
 # ================== LOG FORWARDING SETUP ==================
-LOG_BOT_TOKEN = "YOUR_SECOND_BOT_TOKEN_HERE"  # Dusra bot ka token daal (ya same bot ka)
-LOG_CHAT_ID = 123456789  # Apna TG ID ya private group ID jahan logs jaayenge
+LOG_BOT_TOKEN = "YOUR_SECOND_BOT_TOKEN_HERE"  # Dusra bot token ya same bot ka daal
+LOG_CHAT_ID = 123456789  # Apna TG ID ya group ID jahan logs jaayenge
 
 log_bot = Bot(token=LOG_BOT_TOKEN)
 
@@ -51,22 +51,18 @@ class TelegramLogger(logging.Handler):
                 )
             )
         except Exception:
-            pass  # Agar bot down ho to ignore
+            pass
 
-# Logging setup with Telegram forwarding
 logging.basicConfig(
-    level=logging.INFO,  # DEBUG se INFO kiya taaki spam na ho, change kar sakta hai
+    level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('instagram_bot.log'),
         logging.StreamHandler(),
-        TelegramLogger()  # Ye add kiya logs Telegram pe bhejne ke liye
+        TelegramLogger()
     ]
 )
 
-# Baki variables same
-user_fetching = set()
-user_cancel_fetch = set()
 AUTHORIZED_FILE = 'authorized_users.json'
 TASKS_FILE = 'tasks.json'
 OWNER_TG_ID = int(os.environ.get('OWNER_TG_ID'))
@@ -85,7 +81,21 @@ user_fetching = set()
 
 os.makedirs('sessions', exist_ok=True)
 
-# ... (baki saara code jo pehle tha – functions, patches wagera same rahega)
+# ================== RESTORE TASKS FUNCTION (FIXED) ==================
+def restore_tasks_on_start():
+    """Bot start hone pe old tasks restore karega"""
+    global users_tasks, persistent_tasks
+    try:
+        if os.path.exists(TASKS_FILE):
+            with open(TASKS_FILE, 'r') as f:
+                loaded = json.load(f)
+                persistent_tasks = loaded.get('persistent', [])
+                users_tasks = loaded.get('users', {})
+            logging.info(f"Restored {len(persistent_tasks)} persistent tasks aur user tasks.")
+        else:
+            logging.info("No previous tasks file found – fresh start.")
+    except Exception as e:
+        logging.error(f"Tasks restore mein error: {e}")
 
 # ================== RESTART COMMAND ==================
 async def restart_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -94,39 +104,35 @@ async def restart_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         await update.message.reply_text("⚠️ Sirf owner hi /restart kar sakta hai! ⚠️")
         return
 
-    await update.message.reply_text("🔄 Bot restart ho raha hai...\nOld process band + naya background mein start kar raha hu.")
+    await update.message.reply_text("🔄 Bot restart ho raha hai...")
 
     try:
-        # Old screen session kill
         os.system("screen -S lol3bot -X quit > /dev/null 2>&1")
-
-        # Naya session start (path change kar apne hisaab se)
-        restart_cmd = "cd /root/lol3 && screen -dmS lol3bot bash vpssetup.sh"
+        restart_cmd = "cd /root/lol3 && screen -dmS lol3bot bash vpssetup.sh"  # Path change kar apne hisaab se
         subprocess.Popen(restart_cmd, shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-        await update.message.reply_text("✅ Naya bot successfully background mein start ho gaya!\nMain band ho raha hu...")
-
-        # Current process exit
+        await update.message.reply_text("✅ Naya bot background mein start ho gaya! Main band ho raha hu...")
         os._exit(0)
-
     except Exception as e:
-        await update.message.reply_text(f"❌ Restart fail: {str(e)}")
-        logging.error(f"Restart error: {e}")
+        await update.message.reply_text(f"❌ Restart error: {str(e)}")
+        logging.error(f"Restart failed: {e}")
 
-# ================== MAIN BOT SETUP ==================
+# ================== MAIN BOT ==================
 def main_bot():
     from telegram.request import HTTPXRequest
     request = HTTPXRequest(connect_timeout=30, read_timeout=30, write_timeout=30)
     application = Application.builder().token(BOT_TOKEN).request(request).build()
-    global APP, LOOP
-    APP = application
-    LOOP = asyncio.get_event_loop()
+    global APP
     
+    APP = application
+    
+    # Old tasks restore
     restore_tasks_on_start()
     
+    # Switch monitor thread
     monitor_thread = threading.Thread(target=switch_monitor, daemon=True)
     monitor_thread.start()
     
+    # Post init notifications
     async def post_init(app):
         for user_id, tasks_list in list(users_tasks.items()):
             for task in tasks_list:
@@ -135,7 +141,7 @@ def main_bot():
     
     application.post_init = post_init
 
-    # Sab handlers
+    # Handlers
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("viewmyac", viewmyac))
@@ -155,11 +161,9 @@ def main_bot():
     application.add_handler(CommandHandler("flush", flush))
     application.add_handler(CommandHandler("usg", usg_command))
     application.add_handler(CommandHandler("cancel", cancel_handler))
-    
-    # NAYA: Restart command
-    application.add_handler(CommandHandler("restart", restart_handler))
+    application.add_handler(CommandHandler("restart", restart_handler))  # Naya restart
 
-    # Conversation handlers same...
+    # Conversation handlers (assumed same jaise pehle the)
     conv_login = ConversationHandler(
         entry_points=[CommandHandler("login", login_start)],
         states={
@@ -170,12 +174,11 @@ def main_bot():
     )
     application.add_handler(conv_login)
 
-    # ... (baki conv_plogin, conv_slogin, conv_attack wagera same jaise pehle the)
+    # ... (baki conv_plogin, conv_slogin, conv_attack wagera jo pehle the same daal dena)
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    print("🚀 Instagram Spamming Bot started ")
-    logging.info("Bot successfully started with new features.")
+    logging.info("🚀 Instagram Spamming Bot successfully started with all fixes!")
     application.run_polling()
 
 if __name__ == "__main__":
