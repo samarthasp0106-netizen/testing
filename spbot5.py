@@ -30,7 +30,7 @@ from queue import Queue, Empty
 
 load_dotenv()
 
-# ================== LOG FORWARDING (Command se set kar sakta hai) ==================
+# ================== LOG FORWARDING (Command se set) ==================
 LOG_SETTINGS_FILE = "log_settings.json"
 
 log_bot = None
@@ -100,20 +100,20 @@ load_log_settings()
 # ================== LOG SETTINGS COMMANDS ==================
 async def setlogtoken(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_TG_ID:
-        await update.message.reply_text("⚠️ Only owner!")
+        await update.message.reply_text("⚠️ Only owner can use this!")
         return
     if not context.args:
         await update.message.reply_text("Usage: /setlogtoken <bot_token>")
         return
-    token = context.args[0]
+    token = " ".join(context.args)  # multi-part token support
     global log_bot
     try:
         log_bot = Bot(token=token)
-        await log_bot.send_message(chat_id=OWNER_TG_ID, text="✅ Log token test OK!")
+        await log_bot.send_message(chat_id=update.effective_user.id, text="✅ Log bot token test successful!")
         save_log_settings(token=token)
-        await update.message.reply_text("✅ Log token set & tested!")
+        await update.message.reply_text("✅ Log token set and tested!")
     except Exception as e:
-        await update.message.reply_text(f"❌ Invalid token: {e}")
+        await update.message.reply_text(f"❌ Invalid token: {str(e)}")
 
 async def setlogchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_TG_ID:
@@ -127,18 +127,18 @@ async def setlogchat(update: Update, context: ContextTypes.DEFAULT_TYPE):
         global log_chat_id
         log_chat_id = chat_id
         save_log_settings(chat_id=chat_id)
-        await update.message.reply_text(f"✅ Log chat set to {chat_id}")
+        await update.message.reply_text(f"✅ Log chat ID set to {chat_id}")
         if log_bot:
-            await log_bot.send_message(chat_id=chat_id, text="✅ Logs yahan aayenge ab!")
+            await log_bot.send_message(chat_id=chat_id, text="✅ Log forwarding activated in this chat!")
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
 
 async def viewlogsettings(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_TG_ID:
         return
     token_status = "Set" if log_bot else "Not set"
     chat_status = log_chat_id if log_chat_id else "Not set"
-    await update.message.reply_text(f"Log Settings:\nToken: {token_status}\nChat ID: {chat_status}")
+    await update.message.reply_text(f"📋 Log Settings:\nToken: {token_status}\nChat ID: {chat_status}")
 
 # ================== RESTORE TASKS ==================
 def restore_tasks_on_start():
@@ -149,33 +149,33 @@ def restore_tasks_on_start():
                 loaded = json.load(f)
                 persistent_tasks = loaded.get('persistent', [])
                 users_tasks = loaded.get('users', {})
-            logging.info("Tasks restored")
+            logging.info("Previous tasks restored.")
         else:
-            logging.info("Fresh start - no tasks.json")
+            logging.info("No previous tasks – fresh start.")
     except Exception as e:
-        logging.error(f"Restore error: {e}")
+        logging.error(f"Task restore error: {e}")
 
 # ================== /RESTART COMMAND ==================
 async def restart_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_TG_ID:
         await update.message.reply_text("⚠️ Only owner!")
         return
-    await update.message.reply_text("🔄 Restarting bot...")
+    await update.message.reply_text("🔄 Bot restarting...")
     try:
         os.system("screen -S lol3bot -X quit > /dev/null 2>&1")
         restart_cmd = "cd /home/ubuntu/testing && screen -dmS lol3bot bash vpssetup.sh"
         subprocess.Popen(restart_cmd, shell=True)
-        await update.message.reply_text("✅ New bot started!")
+        await update.message.reply_text("✅ New instance started in background!")
         os._exit(0)
     except Exception as e:
-        await update.message.reply_text(f"❌ Error: {e}")
+        await update.message.reply_text(f"❌ Restart error: {str(e)}")
 
 # ================== MAIN BOT ==================
 def main_bot():
     from telegram.request import HTTPXRequest
     request = HTTPXRequest(connect_timeout=60, read_timeout=60, write_timeout=60)
     
-    # Application define kar pehle
+    # Application banate hi
     application = Application.builder().token(BOT_TOKEN).request(request).build()
     global APP
     APP = application
@@ -188,7 +188,7 @@ def main_bot():
         monitor_thread = threading.Thread(target=switch_monitor, daemon=True)
         monitor_thread.start()
     except NameError:
-        pass
+        pass  # ignore if not defined
 
     # Post init
     async def post_init(app):
@@ -201,7 +201,7 @@ def main_bot():
             pass
     application.post_init = post_init
 
-    # Ab sab handlers add kar (application define hone ke baad)
+    # SAB HANDLERS YAHAN ADD (application define hone ke baad)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("viewmyac", viewmyac))
@@ -222,19 +222,16 @@ def main_bot():
     application.add_handler(CommandHandler("usg", usg_command))
     application.add_handler(CommandHandler("cancel", cancel_handler))
     application.add_handler(CommandHandler("restart", restart_handler))
-    
-    # Log settings commands
     application.add_handler(CommandHandler("setlogtoken", setlogtoken))
     application.add_handler(CommandHandler("setlogchat", setlogchat))
     application.add_handler(CommandHandler("viewlogsettings", viewlogsettings))
 
-    # Conversation handlers jo pehle the (add kar dena)
-    # application.add_handler(conv_login) etc.
+    # Conversation handlers jo pehle the add kar dena
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    logging.info("🚀 Bot started successfully – Log forwarding command se set kar sakta hai!")
-    print("Bot running... Use /setlogtoken and /setlogchat later.")
+    logging.info("🚀 Instagram Spammer Bot STARTED – All features ready!")
+    print("Bot is running... Use /setlogtoken and /setlogchat later for logs.")
     application.run_polling()
 
 if __name__ == "__main__":
