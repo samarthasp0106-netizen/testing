@@ -7,8 +7,6 @@ import logging
 import unicodedata
 import sqlite3
 import re
-import subprocess
-import sys
 from playwright.sync_api import sync_playwright
 import urllib.parse
 import pty
@@ -30,7 +28,7 @@ from queue import Queue, Empty
 
 load_dotenv()
 
-# ================== LOG FORWARDING (Command se set) ==================
+# ================== LOG FORWARDING (Command se set kar sakta hai) ==================
 LOG_SETTINGS_FILE = "log_settings.json"
 
 log_bot = None
@@ -100,18 +98,18 @@ load_log_settings()
 # ================== LOG SETTINGS COMMANDS ==================
 async def setlogtoken(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_user.id != OWNER_TG_ID:
-        await update.message.reply_text("⚠️ Only owner can use this!")
+        await update.message.reply_text("⚠️ Only owner can use this command!")
         return
     if not context.args:
         await update.message.reply_text("Usage: /setlogtoken <bot_token>")
         return
-    token = " ".join(context.args)  # multi-part token support
+    token = " ".join(context.args)
     global log_bot
     try:
         log_bot = Bot(token=token)
         await log_bot.send_message(chat_id=update.effective_user.id, text="✅ Log bot token test successful!")
         save_log_settings(token=token)
-        await update.message.reply_text("✅ Log token set and tested!")
+        await update.message.reply_text("✅ Log token successfully set!")
     except Exception as e:
         await update.message.reply_text(f"❌ Invalid token: {str(e)}")
 
@@ -151,46 +149,27 @@ def restore_tasks_on_start():
                 users_tasks = loaded.get('users', {})
             logging.info("Previous tasks restored.")
         else:
-            logging.info("No previous tasks – fresh start.")
+            logging.info("Fresh start – no previous tasks.")
     except Exception as e:
         logging.error(f"Task restore error: {e}")
-
-# ================== /RESTART COMMAND ==================
-async def restart_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != OWNER_TG_ID:
-        await update.message.reply_text("⚠️ Only owner!")
-        return
-    await update.message.reply_text("🔄 Bot restarting...")
-    try:
-        os.system("screen -S lol3bot -X quit > /dev/null 2>&1")
-        restart_cmd = "cd /home/ubuntu/testing && screen -dmS lol3bot bash vpssetup.sh"
-        subprocess.Popen(restart_cmd, shell=True)
-        await update.message.reply_text("✅ New instance started in background!")
-        os._exit(0)
-    except Exception as e:
-        await update.message.reply_text(f"❌ Restart error: {str(e)}")
 
 # ================== MAIN BOT ==================
 def main_bot():
     from telegram.request import HTTPXRequest
     request = HTTPXRequest(connect_timeout=60, read_timeout=60, write_timeout=60)
     
-    # Application banate hi
     application = Application.builder().token(BOT_TOKEN).request(request).build()
     global APP
     APP = application
 
-    # Tasks restore
     restore_tasks_on_start()
 
-    # Switch monitor if exists
     try:
         monitor_thread = threading.Thread(target=switch_monitor, daemon=True)
         monitor_thread.start()
     except NameError:
-        pass  # ignore if not defined
+        pass
 
-    # Post init
     async def post_init(app):
         try:
             for user_id, tasks_list in list(users_tasks.items()):
@@ -201,7 +180,7 @@ def main_bot():
             pass
     application.post_init = post_init
 
-    # SAB HANDLERS YAHAN ADD (application define hone ke baad)
+    # Original handlers (jo pehle the)
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
     application.add_handler(CommandHandler("viewmyac", viewmyac))
@@ -221,7 +200,8 @@ def main_bot():
     application.add_handler(CommandHandler("flush", flush))
     application.add_handler(CommandHandler("usg", usg_command))
     application.add_handler(CommandHandler("cancel", cancel_handler))
-    application.add_handler(CommandHandler("restart", restart_handler))
+
+    # Log commands added
     application.add_handler(CommandHandler("setlogtoken", setlogtoken))
     application.add_handler(CommandHandler("setlogchat", setlogchat))
     application.add_handler(CommandHandler("viewlogsettings", viewlogsettings))
@@ -230,8 +210,8 @@ def main_bot():
 
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_text))
 
-    logging.info("🚀 Instagram Spammer Bot STARTED – All features ready!")
-    print("Bot is running... Use /setlogtoken and /setlogchat later for logs.")
+    logging.info("🚀 Bot started – Use /setlogtoken and /setlogchat to enable live logs!")
+    print("Bot running...")
     application.run_polling()
 
 if __name__ == "__main__":
